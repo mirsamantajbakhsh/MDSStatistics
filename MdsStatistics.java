@@ -40,8 +40,6 @@ package org.wouterspekkink.mdsstatistics;
 
 import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.ListIterator;
-import java.util.Map;
 import java.util.Stack;
 import org.gephi.data.attributes.api.AttributeColumn;
 import org.gephi.data.attributes.api.AttributeModel;
@@ -53,14 +51,16 @@ import org.gephi.graph.api.GraphModel;
 import org.gephi.graph.api.Node;
 import org.gephi.graph.api.Edge;
 import org.gephi.statistics.spi.Statistics;
-import org.jfree.data.xy.XYSeries;
-import org.jfree.data.xy.XYSeriesCollection;
 import mdsj.MDSJ;
 import mdsj.StressMinimization;
 import org.gephi.graph.api.DirectedGraph;
 import org.gephi.graph.api.EdgeIterable;
 import org.gephi.graph.api.GraphController;
 import org.openide.util.Lookup;
+import org.gephi.utils.longtask.spi.LongTask;
+import org.gephi.utils.progress.Progress;
+import org.gephi.utils.progress.ProgressTicket;
+
 
 /**
  * The plugin makes use of the MDSJ library, which is available under the Creative Commons License "by-nc-sa" 3.0.
@@ -75,7 +75,7 @@ import org.openide.util.Lookup;
  */
 
 
-public class MdsStatistics implements Statistics {
+public class MdsStatistics implements Statistics, LongTask {
     
     /* Currently I am assuming that we're working with only two dimensions
     Later I might want to add an iterator to determine the number of
@@ -102,6 +102,9 @@ public class MdsStatistics implements Statistics {
     
     //When using weights for distances
     double [][] weightDist;
+    
+    private ProgressTicket progress;
+    private boolean isCanceled;
 
     
     public MdsStatistics() {
@@ -124,7 +127,7 @@ public class MdsStatistics implements Statistics {
     }
   
     public void execute(Graph hgraph, AttributeModel attributeModel) {
-       
+        isCanceled = false;
         //Look if the result column already exist and create it if needed
         AttributeTable nodeTable = attributeModel.getNodeTable();
         AttributeTable edgeTable = attributeModel.getEdgeTable();
@@ -175,7 +178,10 @@ public class MdsStatistics implements Statistics {
         int n = hgraph.getNodeCount();
         
         double [][] distances = new double[n][n];
-          
+        
+        Progress.start(progress, hgraph.getNodeCount());
+        int count = 0;
+        
         for (Node s : hgraph.getNodes()) {
             Stack<Node> S = new Stack<Node>();
 
@@ -214,6 +220,12 @@ public class MdsStatistics implements Statistics {
                     distances[s_index][i] = d[i];
                 }
             }
+            count++;
+            if(isCanceled) {
+                hgraph.readUnlockAll();
+                return distances;
+            }
+            Progress.progress(progress, count);
         }
         return distances;
     }
@@ -273,10 +285,14 @@ public class MdsStatistics implements Statistics {
         return report;
     }
     
-        /**
-     *
-     * @return
-     */
-}
+    @Override
+    public boolean cancel() {
+        this.isCanceled = true;
+        return true;
+    }
     
-
+    @Override
+    public void setProgressTicket(ProgressTicket progressTicket) {
+    this.progress  = progressTicket;
+    }
+}
